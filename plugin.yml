@@ -13,5 +13,3 @@ commands:
 permissions:
   enchantsui.use:
     default: true
-  enchantsui.bypass:
-    default: op
