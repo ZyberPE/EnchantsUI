@@ -39,6 +39,7 @@ class Main extends PluginBase {
 
     private function openItemMenu(Player $player): void {
         $items = [];
+
         foreach($player->getInventory()->getContents() as $slot => $item){
             if($this->isEnchantable($item)){
                 $items[$slot] = $item;
@@ -57,9 +58,7 @@ class Main extends PluginBase {
 
             if(!isset($slots[$data])) return;
 
-            $slot = $slots[$data];
-            $this->selectedItem[$player->getName()] = $slot;
-
+            $this->selectedItem[$player->getName()] = $slots[$data];
             $this->confirmItem($player);
         });
 
@@ -104,10 +103,8 @@ class Main extends PluginBase {
 
             if(!isset($buttons[$data])) return;
 
-            [$enchantName, $level, $cost] = $buttons[$data];
-            $this->selectedEnchant[$player->getName()] = [$enchantName, $level, $cost];
-
-            $this->confirmEnchant($player, $enchantName, $level, $cost);
+            [$name, $level, $cost] = $buttons[$data];
+            $this->confirmEnchant($player, $name, $level, $cost);
         });
 
         $form->setTitle($this->getConfig()->get("titles")["enchant-menu"]);
@@ -118,7 +115,6 @@ class Main extends PluginBase {
                 $enchant = $this->getEnchantment($name);
                 if($enchant === null) continue;
 
-                // ✅ compatibility check
                 if(!$enchant->canBeAppliedTo($item)) continue;
 
                 $buttons[] = [$name, (int)$level, (int)$cost];
@@ -154,31 +150,40 @@ class Main extends PluginBase {
     }
 
     private function applyEnchant(Player $player, string $name, int $level, int $cost): void {
-        $slot = $this->selectedItem[$player->getName()] ?? null;
-        if($slot === null) return;
+        $playerName = $player->getName();
 
-        $item = $player->getInventory()->getItem($slot);
+        if(!isset($this->selectedItem[$playerName])) return;
+
+        $slot = $this->selectedItem[$playerName];
+        $inventory = $player->getInventory();
+
+        $item = $inventory->getItem($slot);
+        if($item->isNull()) return;
+
         $enchant = $this->getEnchantment($name);
-
         if($enchant === null) return;
 
-        // ✅ compatibility double-check
         if(!$enchant->canBeAppliedTo($item)){
             $player->sendMessage("§cThis enchant can't be applied to this item!");
             return;
         }
 
-        // ✅ XP check
-        if(!$player->hasPermission("enchantsui.bypass")){
-            if($player->getXpManager()->getXpLevel() < $cost){
-                $player->sendMessage($this->getConfig()->get("messages")["not-enough-xp"]);
-                return;
-            }
-            $player->getXpManager()->subtractXpLevels($cost);
+        // ✅ XP REQUIRED FOR EVERYONE (no bypass)
+        if($player->getXpManager()->getXpLevel() < $cost){
+            $player->sendMessage($this->getConfig()->get("messages")["not-enough-xp"]);
+            return;
         }
 
+        $player->getXpManager()->subtractXpLevels($cost);
+
+        // ✅ APPLY ENCHANT SAFELY
         $item->addEnchantment(new EnchantmentInstance($enchant, $level));
-        $player->getInventory()->setItem($slot, $item);
+
+        // ✅ SET BACK INTO SAME SLOT (NO DUPING)
+        $inventory->setItem($slot, $item);
+
+        // ✅ CLEAR DATA TO PREVENT REUSE BUG
+        unset($this->selectedItem[$playerName]);
 
         $player->sendMessage($this->getConfig()->get("messages")["success"]);
     }
