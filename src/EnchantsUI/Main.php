@@ -18,6 +18,7 @@ use jojoe77777\FormAPI\SimpleForm;
 class Main extends PluginBase {
 
     private array $selectedItem = [];
+    private array $selectedEnchant = [];
 
     public function onEnable(): void {
         $this->saveDefaultConfig();
@@ -37,53 +38,53 @@ class Main extends PluginBase {
     }
 
     private function openItemMenu(Player $player): void {
-        $config = $this->getConfig();
+        $items = [];
+        foreach($player->getInventory()->getContents() as $slot => $item){
+            if($this->isEnchantable($item)){
+                $items[$slot] = $item;
+            }
+        }
 
-        $form = new SimpleForm(function(Player $player, $data){
+        if(empty($items)){
+            $player->sendMessage($this->getConfig()->get("messages")["no-items"]);
+            return;
+        }
+
+        $form = new SimpleForm(function(Player $player, $data) use ($items){
             if($data === null) return;
 
-            $inv = $player->getInventory()->getContents();
-            $items = array_values(array_filter($inv, fn($i) => $this->isEnchantable($i)));
+            $slots = array_keys($items);
 
-            if(!isset($items[$data])) return;
+            if(!isset($slots[$data])) return;
 
-            $this->selectedItem[$player->getName()] = $items[$data];
+            $slot = $slots[$data];
+            $this->selectedItem[$player->getName()] = $slot;
+
             $this->confirmItem($player);
         });
 
-        $form->setTitle($config->get("titles")["item-menu"]);
-
-        $items = array_filter($player->getInventory()->getContents(), fn($i) => $this->isEnchantable($i));
-
-        if(empty($items)){
-            $player->sendMessage($config->get("messages")["no-items"]);
-            return;
-        }
+        $form->setTitle($this->getConfig()->get("titles")["item-menu"]);
 
         foreach($items as $item){
             $form->addButton($item->getName());
         }
 
-        $form->addButton($config->get("settings")["close-button"]);
+        $form->addButton("§cClose");
 
         $player->sendForm($form);
     }
 
     private function confirmItem(Player $player): void {
-        $config = $this->getConfig();
-
         $form = new SimpleForm(function(Player $player, $data){
             if($data === null) return;
 
             if($data === 0){
                 $this->openEnchantMenu($player);
-            } else {
-                $player->sendMessage($this->getConfig()->get("messages")["cancelled"]);
             }
         });
 
-        $form->setTitle($config->get("titles")["confirm-menu"]);
-        $form->setContent($config->get("messages")["confirm-item"]);
+        $form->setTitle($this->getConfig()->get("titles")["confirm-menu"]);
+        $form->setContent($this->getConfig()->get("messages")["confirm-item"]);
         $form->addButton("§aYes");
         $form->addButton("§cNo");
 
@@ -91,55 +92,83 @@ class Main extends PluginBase {
     }
 
     private function openEnchantMenu(Player $player): void {
-        $config = $this->getConfig();
+        $slot = $this->selectedItem[$player->getName()] ?? null;
+        if($slot === null) return;
 
-        $form = new SimpleForm(function(Player $player, $data){
+        $item = $player->getInventory()->getItem($slot);
+
+        $buttons = [];
+
+        $form = new SimpleForm(function(Player $player, $data) use (&$buttons){
             if($data === null) return;
 
-            $enchants = array_keys($this->getConfig()->get("enchants"));
-            if(!isset($enchants[$data])) return;
+            if(!isset($buttons[$data])) return;
 
-            $this->confirmEnchant($player, $enchants[$data]);
+            [$enchantName, $level, $cost] = $buttons[$data];
+            $this->selectedEnchant[$player->getName()] = [$enchantName, $level, $cost];
+
+            $this->confirmEnchant($player, $enchantName, $level, $cost);
         });
 
-        $form->setTitle($config->get("titles")["enchant-menu"]);
+        $form->setTitle($this->getConfig()->get("titles")["enchant-menu"]);
 
-        foreach($config->get("enchants") as $name => $data){
+        foreach($this->getConfig()->get("enchants") as $name => $data){
             foreach($data["levels"] as $level => $cost){
-                $form->addButton(ucfirst($name) . " " . $level . " (§e{$cost} XP§r)");
+
+                $enchant = $this->getEnchantment($name);
+                if($enchant === null) continue;
+
+                // ✅ compatibility check
+                if(!$enchant->canBeAppliedTo($item)) continue;
+
+                $buttons[] = [$name, (int)$level, (int)$cost];
+                $form->addButton(ucfirst($name) . " " . $level . "\n§eCost: {$cost} XP");
             }
+        }
+
+        if(empty($buttons)){
+            $player->sendMessage("§cNo compatible enchants!");
+            return;
         }
 
         $player->sendForm($form);
     }
 
-    private function confirmEnchant(Player $player, string $enchantName): void {
-        $config = $this->getConfig();
+    private function confirmEnchant(Player $player, string $name, int $level, int $cost): void {
+        $msg = str_replace("{cost}", (string)$cost, $this->getConfig()->get("messages")["confirm-enchant"]);
 
-        $levels = $config->get("enchants")[$enchantName]["levels"];
+        $form = new SimpleForm(function(Player $player, $data) use ($name, $level, $cost){
+            if($data === null) return;
 
-        foreach($levels as $level => $cost){
-            $form = new SimpleForm(function(Player $player, $data) use ($enchantName, $level, $cost){
-                if($data === null) return;
+            if($data === 0){
+                $this->applyEnchant($player, $name, $level, $cost);
+            }
+        });
 
-                if($data === 0){
-                    $this->applyEnchant($player, $enchantName, $level, $cost);
-                } else {
-                    $player->sendMessage($this->getConfig()->get("messages")["cancelled"]);
-                }
-            });
+        $form->setTitle($this->getConfig()->get("titles")["cost-menu"]);
+        $form->setContent($msg);
+        $form->addButton("§aConfirm");
+        $form->addButton("§cCancel");
 
-            $form->setTitle($config->get("titles")["cost-menu"]);
-            $form->setContent(str_replace("{cost}", (string)$cost, $config->get("messages")["confirm-enchant"]));
-            $form->addButton("§aConfirm");
-            $form->addButton("§cCancel");
-
-            $player->sendForm($form);
-            return;
-        }
+        $player->sendForm($form);
     }
 
-    private function applyEnchant(Player $player, string $enchantName, int $level, int $cost): void {
+    private function applyEnchant(Player $player, string $name, int $level, int $cost): void {
+        $slot = $this->selectedItem[$player->getName()] ?? null;
+        if($slot === null) return;
+
+        $item = $player->getInventory()->getItem($slot);
+        $enchant = $this->getEnchantment($name);
+
+        if($enchant === null) return;
+
+        // ✅ compatibility double-check
+        if(!$enchant->canBeAppliedTo($item)){
+            $player->sendMessage("§cThis enchant can't be applied to this item!");
+            return;
+        }
+
+        // ✅ XP check
         if(!$player->hasPermission("enchantsui.bypass")){
             if($player->getXpManager()->getXpLevel() < $cost){
                 $player->sendMessage($this->getConfig()->get("messages")["not-enough-xp"]);
@@ -148,21 +177,18 @@ class Main extends PluginBase {
             $player->getXpManager()->subtractXpLevels($cost);
         }
 
-        $item = $this->selectedItem[$player->getName()] ?? null;
-        if($item === null) return;
+        $item->addEnchantment(new EnchantmentInstance($enchant, $level));
+        $player->getInventory()->setItem($slot, $item);
 
-        $enchant = match($enchantName){
+        $player->sendMessage($this->getConfig()->get("messages")["success"]);
+    }
+
+    private function getEnchantment(string $name){
+        return match($name){
             "efficiency" => VanillaEnchantments::EFFICIENCY(),
             "sharpness" => VanillaEnchantments::SHARPNESS(),
             "protection" => VanillaEnchantments::PROTECTION(),
             default => null
         };
-
-        if($enchant === null) return;
-
-        $item->addEnchantment(new EnchantmentInstance($enchant, $level));
-        $player->getInventory()->addItem($item);
-
-        $player->sendMessage($this->getConfig()->get("messages")["success"]);
     }
 }
