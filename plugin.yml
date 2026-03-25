@@ -1,0 +1,17 @@
+name: EnchantsUI
+main: EnchantsUI\Main
+version: 1.0.0
+api: 5.0.0
+author: ZyberPE
+
+commands:
+  enchants:
+    description: Open enchant UI
+    usage: /enchants
+    permission: enchantsui.use
+
+permissions:
+  enchantsui.use:
+    default: true
+  enchantsui.bypass:
+    default: op
