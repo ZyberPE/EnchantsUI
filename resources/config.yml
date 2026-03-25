@@ -1,0 +1,44 @@
+messages:
+  no-items: "§cYou have no enchantable items."
+  confirm-item: "§eAre you sure you want to enchant this item?"
+  confirm-enchant: "§eThis enchant costs {cost} XP levels. Continue?"
+  success: "§aEnchantment applied!"
+  not-enough-xp: "§cYou do not have enough XP!"
+  cancelled: "§cCancelled."
+
+titles:
+  item-menu: "Select Item"
+  confirm-menu: "Confirm"
+  enchant-menu: "Select Enchant"
+  cost-menu: "Confirm Cost"
+
+settings:
+  close-button: "§cClose"
+
+enchants:
+  efficiency:
+    id: efficiency
+    levels:
+      1: 5
+      2: 10
+      3: 15
+      4: 20
+      5: 30
+
+  sharpness:
+    id: sharpness
+    levels:
+      1: 5
+      2: 10
+      3: 15
+      4: 20
+      5: 30
+
+  protection:
+    id: protection
+    levels:
+      1: 5
+      2: 10
+      3: 15
+      4: 20
+      5: 30
